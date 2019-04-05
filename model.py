@@ -1,12 +1,18 @@
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
+import divers as div
 
 tf.enable_eager_execution()
 
 
 class DensenetFeatModel(tf.keras.Model):
     def __init__(self):
+        '''
+        Dense net est entraîné sur des images 224x224, si l'image d'entrée est plus grande le réseau va appliquer
+        fois Densenet sur des sous-régions, jusqu'à obtenir l'image complète
+        '''
+
         super(DensenetFeatModel, self).__init__()
         baseModel = tf.keras.applications.densenet.DenseNet121(weights='imagenet')
         self.model = tf.keras.Model(inputs=baseModel.input, outputs=baseModel.get_layer(
@@ -15,7 +21,6 @@ class DensenetFeatModel(tf.keras.Model):
     def call(self, inputs):
         # inputs = tf.transpose(inputs,(0,3,2,1))
         output = self.model(inputs)
-        print(output.shape)
         return output
 
 
@@ -33,9 +38,10 @@ class GraspNet(BaseDeepModel):
         # https://arxiv.org/abs/1502.03167
         self.bn0 = tf.keras.layers.BatchNormalization(name="grasp-b0")
         self.conv0 = tf.keras.layers.Conv2D(64, kernel_size=1, strides=1, activation=tf.nn.relu,
-                                            use_bias=False, name="grasp-conv0")
+                                            use_bias=False, padding='valid', name="grasp-conv0")
         self.bn1 = tf.keras.layers.BatchNormalization(name="grasp-b1")
-        self.conv1 = tf.keras.layers.Conv2D(3, kernel_size=1, strides=1, activation=tf.nn.relu, use_bias=False, name="grasp-conv1")
+        self.conv1 = tf.keras.layers.Conv2D(3, kernel_size=1, strides=1,    activation=tf.nn.relu,
+                                            use_bias=False, padding='valid', name="grasp-conv1")
         self.bn2 = tf.keras.layers.BatchNormalization(name="grasp-b2")
 
     def call(self, inputs, bufferize=False, step_id=-1):
@@ -54,27 +60,60 @@ class Reinforcement(tf.keras.Model):
         super(Reinforcement, self).__init__()
         self.Dense = DensenetFeatModel()
         self.QGrasp = GraspNet()
+        self.num_rotations = 16
+
+        # Initialize variables
+        self.in_height, self.in_width = 0, 0
+        self.scale_factor = 2.0
+        self.padding_width = 0
+        self.target_height = 0
+        self.target_width = 0
+
+    def compute_img_features(self, input_depth_data):
+        rotate_idx = np.array(range(self.num_rotations))
+        angles = np.array(
+            [360 * idx / self.num_rotations for idx in rotate_idx])
+
+        scale_factor = 2
+        self.in_height = input_depth_data.shape[1]
+        self.in_width = input_depth_data.shape[0]
+
+        imgs = [input_depth_data for i in range(self.num_rotations)]
+        rotated_color, self.padding_width = div.preprocess_img(imgs, self.in_height * scale_factor,
+                                                           self.in_width * scale_factor, angles)
+        imgs = [input_depth_data for i in range(self.num_rotations)]
+        rotated_depth, _ = div.preprocess_img(imgs, self.in_height * scale_factor, self.in_width * scale_factor, angles)
+        depth_feat = [self.Dense(tf.reshape(img, (1, *img.shape))) for img in rotated_depth]
+        interm_feat = depth_feat
+        return interm_feat
+
+    def compute_grasp_features(self, primitive_interm_feat):
+        output_prob = {}
+        rotate_idx = np.array(range(self.num_rotations))
+        angles = np.array(
+            [-360*idx/self.num_rotations for idx in rotate_idx])
+
+        imgs = self.QGrasp(primitive_interm_feat)
+        #imgs = [elt[0] for elt in map(primitive_net, primitive_interm_feat)]
+        primitive_feat = div.postprocess_img(imgs, angles)
+        output_prob[primitive] = primitive_feat
+        return output_prob
 
     def call(self, input):
-        return self.QGrasp(self.Dense(input))
+        x = self.QGrasp(self.Dense(input))
+        return x
 
 
-if __name__=="__main__":
-    # Rq DenseNet ne semble pas  vouloir seulement du 224*224
-    im = np.ones((1, 1280, 800, 3), np.float32)
-    print(im.shape)
-    model = DensenetFeatModel()
-    print('Sortie de mon réseau convolutif', model(im).shape)
-    graspModel = GraspNet()
-    result = graspModel(model(im)).numpy()
-    print(result.shape)
-    result = result.reshape((result.shape[1], result.shape[2]))
-    plt.imshow(result)
-    plt.show()
+if __name__ == "__main__":
+    # Image : batch_size x width/height x width/height x channel_size
+    im = np.ndarray((1, 460, 460, 3), np.float32)
+    # Im = np.ones((1, 1280, 1280, 3), np.float32)
+    ReinNet = Reinforcement()
+    result = ReinNet(im)
 
-    rein = Reinforcement()
-    result = rein(im).numpy()
-    print(result.shape)
-    result = result.reshape((result.shape[1], result.shape[2]))
+    result = tf.reshape(result, (result.shape[1], result.shape[2]))
+    plt.subplot(1, 2, 1)
+    plt.imshow(im)
+    plt.subplot(1, 2, 2)
     plt.imshow(result)
     plt.show()
