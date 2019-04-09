@@ -23,7 +23,6 @@ class DensenetFeatModel(tf.keras.Model):
         output = self.model(inputs)
         return output
 
-
 class BaseDeepModel(tf.keras.Model):
     def __init__(self):
         super(BaseDeepModel, self).__init__()

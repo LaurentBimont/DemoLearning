@@ -6,26 +6,29 @@ import numpy as np
 import matplotlib.pyplot as plt
 import divers as div
 import cv2
+import scipy as sc
 
 
 class Trainer(object):
     def __init__(self):
         super(Trainer, self).__init__()
         self.myModel = mod.Reinforcement()
-        self.optimizer = tf.train.MomentumOptimizer(learning_rate=1e-4, momentum=0.9)
+        self.optimizer = tf.train.MomentumOptimizer(learning_rate=1e-3, momentum=0.9)
         self.action = RM.RewardManager()
         self.width, self.height = 0, 0
         self.best_idx, self.future_reward = [0, 0], 0
-        self.scale_factor = 5
+        self.scale_factor = 2
         self.output_prob = 0
         self.loss_value = 0
+        self.iteration = 0
 
         ###### A changer par une fonction adaptée au demonstration learning ######
         self.loss = func.partial(tf.losses.huber_loss)  # Huber loss
         ######                     Demonstration                            ######
-        self.best_pix = [125, 103]
+        self.best_idx = [125, 103]
 
     def forward(self, input):
+        self.image = input
         # Increase the size of the image to have a relevant output map
         input = div.preprocess_img(input, target_height=self.scale_factor*224, target_width=self.scale_factor*224)
         # Pass input data through model
@@ -35,19 +38,22 @@ class Trainer(object):
         # Return Q-map
         return self.output_prob
 
-    def backprop(self, gradient):
+    def backpropagation(self, gradient):
+        print(np.array(self.myModel.trainable_variables).shape, np.array(gradient).shape)
         self.optimizer.apply_gradients(zip(gradient, self.myModel.trainable_variables),
-        global_step=tf.train.get_or_create_global_step())
+                                       global_step=None)        # tf.train.get_or_create_global_step())
         self.iteration = tf.train.get_global_step()
 
     def compute_loss(self):
         # A changer pour pouvoir un mode démonstration et un mode renforcement
         expected_reward, action_reward = self.action.compute_reward(self.action.grasp, self.future_reward)
-        label, label_weights = self.compute_labels(expected_reward, self.best_pix)
-        self.loss_value = self.loss(self.output_prob, label, label_weights)
+        label, label_weights = self.compute_labels(expected_reward, self.best_idx)
+        self.output_prob = tf.reshape(self.output_prob, (self.width, self.height, 1))
+        self.loss_value = self.loss(label, self.output_prob, label_weights)
+        return(self.loss_value)
 
     def max_primitive_pixel(self, prediction):
-        '''
+        '''Locate the max value-pixel of the image
         Locate the highest pixel of a Q-map
         :param prediction: Q map
         :return: max_primitive_pixel_idx (tuple) : pixel of the highest Q value
@@ -85,21 +91,40 @@ class Trainer(object):
         image_idx, image_value = self.max_primitive_pixel(prediction)
         # Best Idx in network output frame
         best_idx, best_value = self.max_primitive_pixel(self.output_prob)
+
         self.best_idx, self.future_reward = best_idx, best_value
         return best_idx, best_value, image_idx, image_value
 
     def compute_labels(self, label_value, best_pix_ind):
+        '''Create the targeted Q-map
+        :param label_value: Reward of the action
+        :param best_pix_ind: Pixel where to perform the action
+        :return: label : an 224x224 array where best pix is at future reward value
+                 label_weights : a 224x224 where best pix is at one
+        '''
         # Compute labels
-        label = np.zeros((224, 224))
-        print(label, label.shape)
-        print(best_pix_ind[0], best_pix_ind[1])
-        print(label_value)
-        label[best_pix_ind[0], best_pix_ind[1]] = label_value
+        label = np.zeros((224, 224, 1))
+        area = 7
+        label[best_pix_ind[0]-area:best_pix_ind[0]+area, best_pix_ind[1]-area:best_pix_ind[1]+area] = label_value
         # blur_kernel = np.ones((5,5),np.float32)/25
         # action_area = cv2.filter2D(action_area, -1, blur_kernel)
         # Compute label mask
         label_weights = np.zeros(label.shape)
-        label_weights[best_pix_ind[0], best_pix_ind[1]] = 1
+        label_weights[best_pix_ind[0]-10:best_pix_ind[0]+10, best_pix_ind[1]-10:best_pix_ind[1]+10] = 1
+
+        # plt.subplot(1, 3, 1)
+        # self.image = np.reshape(self.image, (self.image.shape[1], self.image.shape[2], 3))
+        # plt.imshow(self.image)
+        # plt.subplot(1, 3, 2)
+        # label_viz = np.reshape(label, (label.shape[0], label.shape[1]))
+        # plt.imshow(label_viz)
+
+        label, label_weights = tf.convert_to_tensor(label, np.float32),\
+                               tf.convert_to_tensor(label_weights, np.float32)
+        label, label_weights = tf.image.resize_images(label, (self.width, self.height)),\
+                               tf.image.resize_images(label_weights, (self.width, self.height))
+        # plt.subplot(1, 3, 3)
+        # plt.imshow(label.numpy()[:, :, 0])
         return label, label_weights
 
     def vizualisation(self, img, idx):
@@ -108,10 +133,13 @@ class Trainer(object):
         plt.show()
 
     def main(self, input):
-        self.forward(input)
-        self.compute_loss()
+        self.future_reward = 1
         with tf.GradientTape() as tape:
-            self.backprop(tape.gradient(self.compute_loss(), self.myModel.trainable_variables))
+            self.forward(input)
+            self.compute_loss()
+            grad = tape.gradient(self.loss_value, self.myModel.trainable_variables)
+            self.optimizer.apply_gradients(zip(grad, self.myModel.trainable_variables),
+                                           global_step=tf.train.get_or_create_global_step())
 
 
 if __name__ == '__main__':
@@ -127,10 +155,30 @@ if __name__ == '__main__':
         Network.vizualisation(im, image_idx)
         result = tf.reshape(result, (result.shape[1], result.shape[2]))
 
-    Network.main(im)
-    #with tf.GradientTape() as tape:
-    #    loss =
-    #    test.backprop(tape.gradient(loss, test.trainable_variables))
+    previous_qmap = Network.forward(im)
+    N = 5
+    for i in range(N):
+        print('Iteration {}/{}'.format(i, N-1))
+        Network.main(im)
+    trained_qmap = Network.forward(im)
 
+    # Creation of a rotated view
+    im2 = sc.ndimage.rotate(im[0, :, :, :], 90)
+    im2.reshape(1, im2.shape[0], im2.shape[1], im2.shape[2])
+    im2 = np.array([im2])
 
-######### remettre les labels en format de sortie du réseau ##########
+    # Resizes images
+    new_qmap = Network.forward(im2)
+    trained_qmap = tf.image.resize_images(trained_qmap, (14, 14))
+    previous_qmap = tf.image.resize_images(previous_qmap, (14, 14))
+    new_qmap = tf.image.resize_images(new_qmap, (14, 14))
+    print(new_qmap.shape)
+
+    # Plotting
+    plt.subplot(1, 3, 3)
+    plt.imshow(tf.reshape(new_qmap, (14, 14)))
+    plt.subplot(1, 3, 1)
+    plt.imshow(tf.reshape(previous_qmap, (14, 14)))
+    plt.subplot(1, 3, 2)
+    plt.imshow(tf.reshape(trained_qmap, (14, 14)))
+    plt.show()

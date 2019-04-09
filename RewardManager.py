@@ -28,7 +28,6 @@ class RewardManager(object):
     def compute_reward(self, state, future_reward):
         # Compute current reward
         action_reward = self.reward
-
         if not state.grasp_success:
             future_reward = 0
         print('Current reward: {}'.format(action_reward))
