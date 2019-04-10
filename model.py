@@ -3,8 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import divers as div
 
-tf.enable_eager_execution()
-
 
 class DensenetFeatModel(tf.keras.Model):
     def __init__(self):
@@ -22,6 +20,24 @@ class DensenetFeatModel(tf.keras.Model):
         # inputs = tf.transpose(inputs,(0,3,2,1))
         output = self.model(inputs)
         return output
+
+
+class VGGFeatModel(tf.keras.Model):
+    def __init__(self):
+        '''
+        Dense net est entraîné sur des images 224x224, si l'image d'entrée est plus grande le réseau va appliquer
+        fois Densenet sur des sous-régions, jusqu'à obtenir l'image complète
+        '''
+
+        super(VGGFeatModel, self).__init__()
+        baseModel = tf.keras.applications.VGG19(weights='imagenet')
+        self.model = tf.keras.Model(inputs=baseModel.input, outputs=baseModel.get_layer("block5_pool").output)
+
+    def call(self, inputs):
+        # inputs = tf.transpose(inputs,(0,3,2,1))
+        output = self.model(inputs)
+        return output
+
 
 class BaseDeepModel(tf.keras.Model):
     def __init__(self):
@@ -58,6 +74,7 @@ class Reinforcement(tf.keras.Model):
     def __init__(self):
         super(Reinforcement, self).__init__()
         self.Dense = DensenetFeatModel()
+        self.VGG = VGGFeatModel()
         self.QGrasp = GraspNet()
         self.num_rotations = 16
 
@@ -99,20 +116,31 @@ class Reinforcement(tf.keras.Model):
         return output_prob
 
     def call(self, input):
-        x = self.QGrasp(self.Dense(input))
+        x = self.QGrasp(self.VGG(input))
         return x
 
 
 if __name__ == "__main__":
-    # Image : batch_size x width/height x width/height x channel_size
-    im = np.ndarray((1, 460, 460, 3), np.float32)
-    # Im = np.ones((1, 1280, 1280, 3), np.float32)
-    ReinNet = Reinforcement()
-    result = ReinNet(im)
 
-    result = tf.reshape(result, (result.shape[1], result.shape[2]))
-    plt.subplot(1, 2, 1)
-    plt.imshow(im)
-    plt.subplot(1, 2, 2)
-    plt.imshow(result)
-    plt.show()
+    config = tf.ConfigProto()
+    config.gpu_options.per_process_gpu_memory_fraction = 0.8
+    session = tf.Session(config=config)
+
+    tf.enable_eager_execution()
+
+    im = np.ndarray((10, 224, 224, 3), np.float32)
+    Densenet = DensenetFeatModel()
+    Densenet(im)
+
+    # # Image : batch_size x width/height x width/height x channel_size
+    # im = np.ndarray((1, 460, 460, 3), np.float32)
+    # # Im = np.ones((1, 1280, 1280, 3), np.float32)
+    # ReinNet = Reinforcement()
+    # result = ReinNet(im)
+    #
+    # result = tf.reshape(result, (result.shape[1], result.shape[2]))
+    # plt.subplot(1, 2, 1)
+    # plt.imshow(im[0])
+    # plt.subplot(1, 2, 2)
+    # plt.imshow(result)
+    # plt.show()

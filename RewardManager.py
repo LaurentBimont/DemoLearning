@@ -30,10 +30,10 @@ class RewardManager(object):
         action_reward = self.reward
         if not state.grasp_success:
             future_reward = 0
-        print('Current reward: {}'.format(action_reward))
-        print('Future reward: {}'.format(future_reward))
+        # print('Current reward: {}'.format(action_reward))
+        # print('Future reward: {}'.format(future_reward))
         expected_reward = action_reward + self.future_reward_discount * future_reward
-        print('Expected reward: {} + {} x {} = {}'.format(action_reward, self.future_reward_discount, future_reward, expected_reward))
+        # print('Expected reward: {} + {} x {} = {}'.format(action_reward, self.future_reward_discount, future_reward, expected_reward))
         return expected_reward, action_reward
 
 
