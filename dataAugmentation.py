@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import random
 #Test
-# from trainer import Trainer
+from trainer import Trainer
 
 
 class OnlineAugmentation(object):
@@ -167,21 +167,29 @@ class OnlineAugmentation(object):
 
 if __name__=="__main__":
 
+    config = tf.ConfigProto()
+    config.gpu_options.per_process_gpu_memory_fraction = 0.9
+    session = tf.Session(config=config)
     tf.enable_eager_execution()
 
     im = np.zeros((1, 224, 224, 3), np.float32)
     im[0, 70:190, 100:105, :] = 1
     im[0, 70:80, 80:125, :] = 1
     best_idx = [125, 103]
-
+    print(-1)
     hey = Trainer()
+    print(0)
     hey.forward(im)
+
+    print(1)
     label, label_weights = hey.compute_labels(1.9, best_idx)
-
+    print(2)
     OA = OnlineAugmentation()
+    print(3)
     OA.create_batch(im, label, label_weights)
+    print(4)
     flip, label_flip, label_weights_flip = OA.crop(im, label, label_weights, zooming=200)
-
+    print(5)
     OA.generate_batch(im, label, label_weights)
     # Visualisation
     viz = True

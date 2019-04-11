@@ -1,26 +1,29 @@
 import model as mod
 import tensorflow as tf
-import RewardManager as RM
+import rewardManager as RM
 import functools as func
 import numpy as np
 import matplotlib.pyplot as plt
 import divers as div
-import cv2
+#import cv2
 import scipy as sc
-import DataAugmentation as da
+#import dataAugmentation as da
 
 
 class Trainer(object):
     def __init__(self):
+        # config = tf.ConfigProto()
+        # config.gpu_options.per_process_gpu_memory_fraction = 0.9
+        # session = tf.Session(config=config)
+        # tf.enable_eager_execution()
+
         super(Trainer, self).__init__()
-
-
         self.myModel = mod.Reinforcement()
         self.optimizer = tf.train.MomentumOptimizer(learning_rate=5e-4, momentum=0.9)
         self.action = RM.RewardManager()
         self.width, self.height = 0, 0
         self.best_idx, self.future_reward = [0, 0], 0
-        self.scale_factor = 2
+        self.scale_factor = 1
         self.output_prob = 0
         self.loss_value = 0
         self.iteration = 0
@@ -41,12 +44,17 @@ class Trainer(object):
                            if 'bias' not in v.name]) * 0.001
 
     def forward(self, input):
+        print(10)
         self.image = input
         # Increase the size of the image to have a relevant output map
+        print(11)
         input = div.preprocess_img(input, target_height=self.scale_factor*224, target_width=self.scale_factor*224)
         # Pass input data through model
+        print(12)
+        print(input.shape, type(input))
         self.output_prob = self.myModel(input)
         # Useless for the moment
+        print(13)
         self.batch, self.width, self.height = self.output_prob.shape[0], self.output_prob.shape[1], self.output_prob.shape[2]
         # Return Q-map
         return self.output_prob
@@ -212,11 +220,6 @@ class Trainer(object):
 
 if __name__ == '__main__':
 
-    config = tf.ConfigProto()
-    config.gpu_options.per_process_gpu_memory_fraction = 0.9
-    session = tf.Session(config=config)
-    tf.enable_eager_execution()
-
     Network = Trainer()
     im = np.zeros((1, 224, 224, 3), np.float32)
     im[:, 70:190, 100:105, :] = 1
@@ -243,6 +246,7 @@ if __name__ == '__main__':
         previous_qmap = Network.forward(im)
         label, label_weights = Network.compute_labels(1.8, best_pix)
 
+        print('Stacking in progress')
         label, label_weights = tf.stack([label for i in range(10)]), tf.stack([label_weights for i in range(10)])
 
         N = 10

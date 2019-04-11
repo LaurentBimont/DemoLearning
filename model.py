@@ -61,6 +61,7 @@ class GraspNet(BaseDeepModel):
 
     def call(self, inputs, bufferize=False, step_id=-1):
         x = self.bn0(inputs)
+        print(x.shape)
         x = self.conv0(x)
         x = self.bn1(x)
         x = self.conv1(x)
@@ -129,7 +130,7 @@ if __name__ == "__main__":
     tf.enable_eager_execution()
 
     im = np.ndarray((10, 224, 224, 3), np.float32)
-    Densenet = DensenetFeatModel()
+    Densenet = Reinforcement()
     Densenet(im)
 
     # # Image : batch_size x width/height x width/height x channel_size
