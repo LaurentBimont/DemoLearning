@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import divers as div
 #import cv2
 import scipy as sc
-#import dataAugmentation as da
+import dataAugmentation as da
 
 
 class Trainer(object):
@@ -27,8 +27,6 @@ class Trainer(object):
         self.output_prob = 0
         self.loss_value = 0
         self.iteration = 0
-
-
 
         ###### A changer par une fonction adaptée au demonstration learning ######
         self.loss = func.partial(tf.losses.huber_loss)  # Huber loss
@@ -135,13 +133,13 @@ class Trainer(object):
                  label_weights : a 224x224 where best pix is at one
         '''
         # Compute labels
-        label = np.zeros((224, 224, 3))
+        label = np.zeros((224, 224, 3), dtype=np.float32)
         area = 7
         label[best_pix_ind[0]-area:best_pix_ind[0]+area, best_pix_ind[1]-area:best_pix_ind[1]+area, :] = label_value
         # blur_kernel = np.ones((5,5),np.float32)/25
         # action_area = cv2.filter2D(action_area, -1, blur_kernel)
         # Compute label mask
-        label_weights = np.zeros(label.shape)
+        label_weights = np.zeros(label.shape, dtype=np.float32)
         label_weights[best_pix_ind[0]-area:best_pix_ind[0]+area, best_pix_ind[1]-area:best_pix_ind[1]+area, :] = 1
 
         viz = False
@@ -219,6 +217,12 @@ class Trainer(object):
 
 
 if __name__ == '__main__':
+
+    config = tf.ConfigProto()
+    config.gpu_options.per_process_gpu_memory_fraction = 0.9
+    session = tf.Session(config=config)
+
+    tf.enable_eager_execution()
 
     Network = Trainer()
     im = np.zeros((1, 224, 224, 3), np.float32)
@@ -310,7 +314,7 @@ if __name__ == '__main__':
         plt.show()
 
 #### Test avec Data Augmentation et Batch
-    test4 = True
+    test4 = False
     if test4:
         previous_qmap = Network.forward(im)
         label, label_weights = Network.compute_labels(1.8, best_pix)
@@ -382,3 +386,37 @@ if __name__ == '__main__':
         plt.imshow(im2[0, :, :, :])
 
         plt.show()
+
+    test5 = True
+    if test5:
+        previous_qmap = Network.forward(im)
+        label, label_weights = Network.compute_labels(1.8, best_pix)
+
+        dataset = da.OnlineAugmentation().generate_batch(im, label, label_weights, viz=False)
+
+        im_o, label_o, label_wo = dataset['im'], dataset['label'], dataset['label_weights']
+        epoch_size = 1
+        batch_size = 8
+        for epoch in range(epoch_size):
+
+            for batch in range(len(dataset['im']) // batch_size):
+
+                print('Epoch {}/{}, Batch {}/{}'.format(epoch + 1, epoch_size, batch + 1,
+                                                        len(dataset['im']) // batch_size))
+                batch_tmp_im, batch_tmp_lab, batch_tmp_weights = [], [], []
+                for i in range(10):
+                    ind_tmp = np.random.randint(len(dataset['im']))
+                    batch_tmp_im.append(im_o[ind_tmp])
+                    batch_tmp_lab.append(label_o[ind_tmp])
+                    batch_tmp_weights.append(label_wo[ind_tmp])
+
+                batch_im, batch_lab, batch_weights = tf.stack(batch_tmp_im), tf.stack(batch_tmp_lab), tf.stack(
+                    batch_tmp_weights)
+
+                Network.main_batches(batch_im, batch_lab, batch_weights)
+
+        trained_qmap = Network.forward(im)
+
+        ntrained_qmap = trained_qmap.numpy()
+
+        print(np.argmax(ntrained_qmap), np.argmax(ntrained_qmap[0]))

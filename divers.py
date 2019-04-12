@@ -8,7 +8,7 @@ def rotate_image2( input_data, input_angles):
 
 def preprocess_img(img, target_height=224*5, target_width=224*5, rotate=False):
     # Apply 2x scale to input heightmaps
-    resized_img = tf.image.resize_images(tf.Variable(img), (target_height, target_width))
+    resized_img = tf.image.resize_images(img, (target_height, target_width))
 
     # Peut être rajouter un padding pour éviter les effets de bords
 
