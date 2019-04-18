@@ -52,16 +52,15 @@ class GraspNet(BaseDeepModel):
         # We can use a higher learning rate and it acts like a regulizer
         # https://arxiv.org/abs/1502.03167
         self.bn0 = tf.keras.layers.BatchNormalization(name="grasp-b0")
-        self.conv0 = tf.keras.layers.Conv2D(64, kernel_size=1, strides=1, activation=tf.nn.relu,
+        self.conv0 = tf.keras.layers.Convolution2D(3, kernel_size=1, strides=1, activation=tf.nn.relu,
                                             use_bias=False, padding='valid', name="grasp-conv0")
         self.bn1 = tf.keras.layers.BatchNormalization(name="grasp-b1")
-        self.conv1 = tf.keras.layers.Conv2D(3, kernel_size=1, strides=1,    activation=tf.nn.relu,
+        self.conv1 = tf.keras.layers.Convolution2D (3, kernel_size=1, strides=1,    activation=tf.nn.relu,
                                             use_bias=False, padding='valid', name="grasp-conv1")
         self.bn2 = tf.keras.layers.BatchNormalization(name="grasp-b2")
 
     def call(self, inputs, bufferize=False, step_id=-1):
         x = self.bn0(inputs)
-        print(x.shape)
         x = self.conv0(x)
         x = self.bn1(x)
         x = self.conv1(x)
@@ -86,62 +85,18 @@ class Reinforcement(tf.keras.Model):
         self.target_height = 0
         self.target_width = 0
 
-    def compute_img_features(self, input_depth_data):
-        rotate_idx = np.array(range(self.num_rotations))
-        angles = np.array(
-            [360 * idx / self.num_rotations for idx in rotate_idx])
-
-        scale_factor = 2
-        self.in_height = input_depth_data.shape[1]
-        self.in_width = input_depth_data.shape[0]
-
-        imgs = [input_depth_data for i in range(self.num_rotations)]
-        rotated_color, self.padding_width = div.preprocess_img(imgs, self.in_height * scale_factor,
-                                                           self.in_width * scale_factor, angles)
-        imgs = [input_depth_data for i in range(self.num_rotations)]
-        rotated_depth, _ = div.preprocess_img(imgs, self.in_height * scale_factor, self.in_width * scale_factor, angles)
-        depth_feat = [self.Dense(tf.reshape(img, (1, *img.shape))) for img in rotated_depth]
-        interm_feat = depth_feat
-        return interm_feat
-
-    def compute_grasp_features(self, primitive_interm_feat):
-        output_prob = {}
-        rotate_idx = np.array(range(self.num_rotations))
-        angles = np.array(
-            [-360*idx/self.num_rotations for idx in rotate_idx])
-
-        imgs = self.QGrasp(primitive_interm_feat)
-        #imgs = [elt[0] for elt in map(primitive_net, primitive_interm_feat)]
-        primitive_feat = div.postprocess_img(imgs, angles)
-        output_prob[primitive] = primitive_feat
-        return output_prob
-
     def call(self, input):
-        x = self.QGrasp(self.VGG(input))
+        x = self.QGrasp(self.Dense(input))
         return x
 
 
 if __name__ == "__main__":
-
     config = tf.ConfigProto()
-    config.gpu_options.per_process_gpu_memory_fraction = 0.8
+    config.gpu_options.per_process_gpu_memory_fraction = 1
     session = tf.Session(config=config)
 
     tf.enable_eager_execution()
 
-    im = np.ndarray((10, 224, 224, 3), np.float32)
+    im = np.ndarray((3, 224, 224, 3), np.float32)
     Densenet = Reinforcement()
     Densenet(im)
-
-    # # Image : batch_size x width/height x width/height x channel_size
-    # im = np.ndarray((1, 460, 460, 3), np.float32)
-    # # Im = np.ones((1, 1280, 1280, 3), np.float32)
-    # ReinNet = Reinforcement()
-    # result = ReinNet(im)
-    #
-    # result = tf.reshape(result, (result.shape[1], result.shape[2]))
-    # plt.subplot(1, 2, 1)
-    # plt.imshow(im[0])
-    # plt.subplot(1, 2, 2)
-    # plt.imshow(result)
-    # plt.show()

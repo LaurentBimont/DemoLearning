@@ -8,6 +8,7 @@ import divers as div
 #import cv2
 import scipy as sc
 import dataAugmentation as da
+from threading import Thread, Lock, Barrier
 
 
 class Trainer(object):
@@ -42,23 +43,22 @@ class Trainer(object):
                            if 'bias' not in v.name]) * 0.001
 
     def forward(self, input):
-        print(10)
         self.image = input
+        self.log_img('input', input)
         # Increase the size of the image to have a relevant output map
-        print(11)
         input = div.preprocess_img(input, target_height=self.scale_factor*224, target_width=self.scale_factor*224)
         # Pass input data through model
-        print(12)
-        print(input.shape, type(input))
         self.output_prob = self.myModel(input)
+        self.log_img('output_prob', self.output_prob)
+        # print(self.output_prob.numpy()[0, :, :, :].shape, type(self.output_prob.numpy()[0, :, :, :]))
+        # plt.imshow(self.output_prob.numpy()[0, :, :, 0])
+        # plt.show()
         # Useless for the moment
-        print(13)
         self.batch, self.width, self.height = self.output_prob.shape[0], self.output_prob.shape[1], self.output_prob.shape[2]
         # Return Q-map
         return self.output_prob
 
     def backpropagation(self, gradient):
-        print(np.array(self.myModel.trainable_variables).shape, np.array(gradient).shape)
         self.optimizer.apply_gradients(zip(gradient, self.myModel.trainable_variables),
                                        global_step=None)        # tf.train.get_or_create_global_step())
         self.iteration = tf.train.get_global_step()
@@ -80,8 +80,8 @@ class Trainer(object):
         label, label_weights = self.reduced_label(label, label_w)
         self.output_prob = tf.reshape(self.output_prob, (self.batch, self.width, self.height, 1))
         self.loss_value = self.loss(label, self.output_prob, label_weights)
+        self.log_scalar('loss value_dem', self.loss_value)
         return self.loss_value
-
 
     def max_primitive_pixel(self, prediction, viz=False):
         '''Locate the max value-pixel of the image
@@ -125,7 +125,7 @@ class Trainer(object):
         self.best_idx, self.future_reward = best_idx, best_value
         return best_idx, best_value, image_idx, image_value
 
-    def compute_labels(self, label_value, best_pix_ind):
+    def compute_labels(self, label_value, best_pix_ind, viz=False):
         '''Create the targeted Q-map
         :param label_value: Reward of the action
         :param best_pix_ind: Pixel where to perform the action
@@ -136,13 +136,9 @@ class Trainer(object):
         label = np.zeros((224, 224, 3), dtype=np.float32)
         area = 7
         label[best_pix_ind[0]-area:best_pix_ind[0]+area, best_pix_ind[1]-area:best_pix_ind[1]+area, :] = label_value
-        # blur_kernel = np.ones((5,5),np.float32)/25
-        # action_area = cv2.filter2D(action_area, -1, blur_kernel)
-        # Compute label mask
         label_weights = np.zeros(label.shape, dtype=np.float32)
         label_weights[best_pix_ind[0]-area:best_pix_ind[0]+area, best_pix_ind[1]-area:best_pix_ind[1]+area, :] = 1
 
-        viz = False
         if viz:
             plt.subplot(1, 3, 1)
             self.image = np.reshape(self.image, (self.image.shape[1], self.image.shape[2], 3))
@@ -158,6 +154,7 @@ class Trainer(object):
         :param label_weights:  224x224 label weights map
         :return: label and label_weights in output format
         '''
+
         # label, label_weights = label[:, :, 0], label_weights[:, :, 0]
         if viz:
             plt.subplot(1, 2, 1)
@@ -167,10 +164,8 @@ class Trainer(object):
                                tf.convert_to_tensor(label_weights, np.float32)
         label, label_weights = tf.image.resize_images(label, (self.width, self.height)),\
                                tf.image.resize_images(label_weights, (self.width, self.height))
-        print(label.shape)
         label, label_weights = tf.reshape(label[:, :, :, 0], (self.batch, self.width, self.height, 1)), \
                                tf.reshape(label_weights[:, :, :, 0], (self.batch, self.width, self.height, 1))
-        print(label.numpy()[0, :, :, 0].shape)
         if viz:
             plt.subplot(1, 2, 2)
             plt.imshow(label.numpy()[0, :, :, 0])
@@ -204,22 +199,48 @@ class Trainer(object):
                 self.optimizer.apply_gradients(zip(grad, self.myModel.trainable_variables),
                                                global_step=tf.train.get_or_create_global_step())
 
-    def main_batches(self, im, label, label_weights):
+    def main_batches(self, im, label, label_weights, viz=False):
         self.future_reward = 1
         with tf.GradientTape() as tape:
             self.forward(im)
-            plt.imshow(label[0])
-            plt.show()
+            if viz:
+                plt.imshow(label[0])
+                plt.show()
             self.compute_loss_dem(label, label_weights, viz=False)
             grad = tape.gradient(self.loss_value, self.myModel.trainable_variables)
             self.optimizer.apply_gradients(zip(grad, self.myModel.trainable_variables),
                                            global_step=tf.train.get_or_create_global_step())
 
+    def create_log(self):
+        self.logger = tf.contrib.summary.create_file_writer(logdir='logs')
+
+    def log_img(self, name, data):
+        with self.logger.as_default(), tf.contrib.summary.always_record_summaries():
+
+            if type(data).__module__ == np.__name__:
+                # If it is a numpy array
+                im2 = tf.convert_to_tensor(data.reshape((1, data.shape[1], data.shape[2], data.shape[3])))
+                print('taille des données pour le logger {} :'.format(name), im2.shape)
+            else:
+                # If it is an Eager Tensor
+                im2 = tf.reshape(data[0], (1, data.shape[1], data.shape[2], data.shape[3]))
+                print('Taille des données pour le logger {} :'.format(name), im2.shape)
+
+            tf.contrib.summary.image(name, im2)
+
+    def log_scalar(self, name, data):
+        with self.logger.as_default(), tf.contrib.summary.always_record_summaries():
+            tf.contrib.summary.scalar(name, data)
+
+    def log_generic(self, name, data):
+        with self.logger.as_default(), tf.contrib.summary.always_record_summaries():
+            tf.contrib.summary.generic(name, data)
+
 
 if __name__ == '__main__':
 
     config = tf.ConfigProto()
-    config.gpu_options.per_process_gpu_memory_fraction = 0.9
+    config.gpu_options.per_process_gpu_memory_fraction = 0.8
     session = tf.Session(config=config)
 
     tf.enable_eager_execution()
@@ -361,7 +382,6 @@ if __name__ == '__main__':
         trained_qmap = tf.image.resize_images(trained_qmap, (Network.width, Network.height))
         previous_qmap = tf.image.resize_images(previous_qmap, (Network.width, Network.height))
         new_qmap = tf.image.resize_images(new_qmap, (Network.width, Network.height))
-        print(new_qmap.shape)
 
         # Plotting
         plt.subplot(2, 3, 3)
@@ -387,7 +407,7 @@ if __name__ == '__main__':
 
         plt.show()
 
-    test5 = True
+    test5 = False
     if test5:
         previous_qmap = Network.forward(im)
         label, label_weights = Network.compute_labels(1.8, best_pix)
@@ -420,3 +440,36 @@ if __name__ == '__main__':
         ntrained_qmap = trained_qmap.numpy()
 
         print(np.argmax(ntrained_qmap), np.argmax(ntrained_qmap[0]))
+
+    # Test de Tensorboard
+    test6 = True
+    if test6:
+        Network.create_log()
+        previous_qmap = Network.forward(im)
+        label, label_weights = Network.compute_labels(1.8, best_pix)
+        dataset = da.OnlineAugmentation().generate_batch(im, label, label_weights, viz=False)
+        im_o, label_o, label_wo = dataset['im'], dataset['label'], dataset['label_weights']
+        epoch_size = 1
+        batch_size = 2
+        for epoch in range(epoch_size):
+            for batch in range(len(dataset['im']) // batch_size):
+                print('Epoch {}/{}, Batch {}/{}'.format(epoch + 1, epoch_size, batch + 1,
+                                                        len(dataset['im']) // batch_size))
+                batch_tmp_im, batch_tmp_lab, batch_tmp_weights = [], [], []
+                for i in range(batch_size):
+                    ind_tmp = np.random.randint(len(dataset['im']))
+                    batch_tmp_im.append(im_o[ind_tmp])
+                    batch_tmp_lab.append(label_o[ind_tmp])
+                    batch_tmp_weights.append(label_wo[ind_tmp])
+
+                batch_im, batch_lab, batch_weights = tf.stack(batch_tmp_im), tf.stack(batch_tmp_lab), tf.stack(
+                    batch_tmp_weights)
+
+                Network.main_batches(batch_im, batch_lab, batch_weights)
+
+        trained_qmap = Network.forward(im)
+
+        ntrained_qmap = trained_qmap.numpy()
+
+        print(np.argmax(ntrained_qmap), np.argmax(ntrained_qmap[0]))
+

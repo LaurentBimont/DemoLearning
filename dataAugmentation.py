@@ -120,12 +120,11 @@ class OnlineAugmentation(object):
         :return: True if a valid grasping point is still in the image
                  False otherwise
         '''
-        print('ici', type(label))
         if np.sum(label.numpy()) > 5:
             return True
         return False
 
-    def generate_batch(self, im, label, label_weights, augmentation_factor=5, viz=False):
+    def generate_batch(self, im, label, label_weights, augmentation_factor=2, viz=False):
         '''Generate new images and label from one image/demonstration
         :param im: input image (numpy (224x224x3))
         :param label: label (numpy (224x224x3))
