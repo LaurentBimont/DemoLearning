@@ -173,17 +173,15 @@ class Trainer(object):
 
         return label, label_weights
 
-    def vizualisation(self, img, idx):
-        prediction = cv2.circle(img[0], (int(idx[1]), int(idx[0])), 7, (255, 255, 255), 2)
-        plt.imshow(prediction)
-        plt.show()
-
     def main(self, input):
         self.future_reward = 1
         print(type(input))
         self.forward(input)
         self.compute_loss_dem()
-        grad = self.optimizer.compute_gradients(self.loss_value, self.myModel.trainable_variables)
+
+        train_op = self.optimizer.minimize(loss=self.loss_value, global_step=tf.train.get_global_step())
+
+        grad = self.optimizer.compute_gradients(self.loss_value)
         self.optimizer.apply_gradients(zip(grad, self.myModel.trainable_variables),
                                            global_step=tf.train.get_or_create_global_step())
 
@@ -209,9 +207,10 @@ class Trainer(object):
             plt.imshow(label[0])
             plt.show()
         self.compute_loss_dem(label, label_weights, viz=False)
-        grad = self.optimizer.compute_gradients(self.loss_value, var_list=self.myModel.trainable_variable)
-        self.optimizer.apply_gradients(zip(grad, self.myModel.trainable_variables),
+        train_op =self.optimizer.apply_gradients(zip(grad, self.myModel.my_trainable_variables),
                                        global_step=tf.train.get_or_create_global_step())
+        train_op = self.optimizer.minimize(self.loss_value, global_step=tf.train.get_or_create_global_step())
+        tf.estimator.EstimatorSpec(mode=tf.estimator.ModeKeys.TRAIN, loss=self.loss_value, train_op=train_op)
 
 
 if __name__ == '__main__':

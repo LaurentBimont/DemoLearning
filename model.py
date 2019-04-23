@@ -53,10 +53,10 @@ class GraspNet(BaseDeepModel):
         # https://arxiv.org/abs/1502.03167
         self.bn0 = tf.keras.layers.BatchNormalization(name="grasp-b0")
         self.conv0 = tf.keras.layers.Convolution2D(3, kernel_size=1, strides=1, activation=tf.nn.relu,
-                                            use_bias=False, padding='valid', name="grasp-conv0")
+                                            use_bias=False, padding='valid', name="grasp-conv0", trainable=True)
         self.bn1 = tf.keras.layers.BatchNormalization(name="grasp-b1")
         self.conv1 = tf.keras.layers.Convolution2D (3, kernel_size=1, strides=1,    activation=tf.nn.relu,
-                                            use_bias=False, padding='valid', name="grasp-conv1")
+                                            use_bias=False, padding='valid', name="grasp-conv1", trainable=True)
         self.bn2 = tf.keras.layers.BatchNormalization(name="grasp-b2")
 
     def call(self, inputs, bufferize=False, step_id=-1):
@@ -76,7 +76,8 @@ class Reinforcement(tf.keras.Model):
         self.Dense = DensenetFeatModel()
         self.VGG = VGGFeatModel()
         self.QGrasp = GraspNet()
-        self.num_rotations = 16
+        self.my_trainable_variables = self.QGrasp.trainable_variables
+        print(self.QGrasp.trainable_variables)
 
         # Initialize variables
         self.in_height, self.in_width = 0, 0

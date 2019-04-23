@@ -20,9 +20,10 @@ class OnlineAugmentation(object):
         :param label_weights: label weights (numpy (224x224x3))
         :return: Return a batch of those 3 inputs
         '''
-        print(im.shape)
-        
-        im = np.reshape(im, (224, 224, 3))
+        if type(im).__module__ == np.__name__:
+            # If it is a numpy array
+            im = np.reshape(im, (224, 224, 3))
+
         my_batch = [im, label, label_weights]
         self.batch = tf.stack(my_batch)
 
