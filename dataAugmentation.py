@@ -20,6 +20,8 @@ class OnlineAugmentation(object):
         :param label_weights: label weights (numpy (224x224x3))
         :return: Return a batch of those 3 inputs
         '''
+        print(im.shape)
+        
         im = np.reshape(im, (224, 224, 3))
         my_batch = [im, label, label_weights]
         self.batch = tf.stack(my_batch)
@@ -120,7 +122,7 @@ class OnlineAugmentation(object):
         :return: True if a valid grasping point is still in the image
                  False otherwise
         '''
-        if np.sum(label.numpy()) > 5:
+        if np.sum(label.eval()) > 5:
             return True
         return False
 
@@ -153,10 +155,10 @@ class OnlineAugmentation(object):
                                     if h < 10 and k == 2:
                                         plt.figure(1)
                                         plt.subplot(3, 3, h)
-                                        plt.imshow(ima.numpy())
+                                        plt.imshow(ima.eval())
                                         plt.figure(2)
                                         plt.subplot(3, 3, h)
-                                        plt.imshow(lab.numpy())
+                                        plt.imshow(lab.eval())
                                         h += 1
                             if self.assert_label(lab):
                                 self.flip(ima, lab, lab_w)
@@ -196,9 +198,9 @@ if __name__=="__main__":
     viz = True
     if viz:
         plt.subplot(1, 3, 1)
-        plt.imshow(flip.numpy())
+        plt.imshow(flip.eval())
         plt.subplot(1, 3, 2)
-        plt.imshow(label_flip.numpy())
+        plt.imshow(label_flip.eval())
         plt.subplot(1, 3, 3)
-        plt.imshow(label_weights_flip.numpy())
+        plt.imshow(label_weights_flip.eval())
         plt.show()
