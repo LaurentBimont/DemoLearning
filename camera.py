@@ -35,6 +35,7 @@ class RealCamera:
                 # Get depth scale
                 depth_sensor = self.profile.get_device().first_depth_sensor()
                 self.depth_scale = depth_sensor.get_depth_scale()
+                print('Pipe Succesfully started {}'.format(self.pipelineStarted))
 
     def stop_pipe(self):
         if self.pipelineStarted:

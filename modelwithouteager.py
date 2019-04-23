@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
@@ -23,23 +22,6 @@ class DensenetFeatModel(tf.keras.Model):
         return output
 
 
-class VGGFeatModel(tf.keras.Model):
-    def __init__(self):
-        '''
-        Dense net est entraîné sur des images 224x224, si l'image d'entrée est plus grande le réseau va appliquer
-        fois Densenet sur des sous-régions, jusqu'à obtenir l'image complète
-        '''
-
-        super(VGGFeatModel, self).__init__()
-        baseModel = tf.keras.applications.VGG19(weights='imagenet')
-        self.model = tf.keras.Model(inputs=baseModel.input, outputs=baseModel.get_layer("block5_pool").output)
-
-    def call(self, inputs):
-        # inputs = tf.transpose(inputs,(0,3,2,1))
-        output = self.model(inputs)
-        return output
-
-
 class BaseDeepModel(tf.keras.Model):
     def __init__(self):
         super(BaseDeepModel, self).__init__()
@@ -53,7 +35,7 @@ class GraspNet(BaseDeepModel):
         # We can use a higher learning rate and it acts like a regulizer
         # https://arxiv.org/abs/1502.03167
         self.bn0 = tf.keras.layers.BatchNormalization(name="grasp-b0")
-        self.conv0 = tf.keras.layers.Convolution2D(3, kernel_size=1, strides=1, activation=tf.nn.relu,
+        self.conv0 = tf.keras.layers.Convolution2D(62, kernel_size=1, strides=1, activation=tf.nn.relu,
                                             use_bias=False, padding='valid', name="grasp-conv0")
         self.bn1 = tf.keras.layers.BatchNormalization(name="grasp-b1")
         self.conv1 = tf.keras.layers.Convolution2D (3, kernel_size=1, strides=1,    activation=tf.nn.relu,
@@ -92,14 +74,6 @@ class Reinforcement(tf.keras.Model):
 
 
 if __name__ == "__main__":
-    config = tf.ConfigProto()
-    config.gpu_options.per_process_gpu_memory_fraction = 1
-    session = tf.Session(config=config)
-
-    print('model eager')
-    tf.enable_eager_execution()
-
     im = np.ndarray((3, 224, 224, 3), np.float32)
-    Densenet = Reinforcement()
-    Densenet(im)
-
+    Densenet = GraspNet()
+    print(Densenet(im))

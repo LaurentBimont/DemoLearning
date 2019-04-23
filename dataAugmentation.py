@@ -20,7 +20,11 @@ class OnlineAugmentation(object):
         :param label_weights: label weights (numpy (224x224x3))
         :return: Return a batch of those 3 inputs
         '''
-        im = np.reshape(im, (224, 224, 3))
+        if type(im).__module__ == np.__name__:
+            # If it is a numpy array
+            im = np.reshape(im, (224, 224, 3))
+
+
         my_batch = [im, label, label_weights]
         self.batch = tf.stack(my_batch)
 
@@ -133,7 +137,6 @@ class OnlineAugmentation(object):
         :return: Batch of the augmented DataSet
         '''
         h = 1
-        print(im.dtype, label.dtype, label_weights.dtype) # = tf.float32, tf.float32, tf.float32
         for i in range(augmentation_factor):
             ima, lab, lab_w = self.crop(im, label, label_weights, zooming=np.random.randint(100, 200))
 
@@ -171,6 +174,7 @@ if __name__=="__main__":
     config.gpu_options.per_process_gpu_memory_fraction = 0.9
     session = tf.Session(config=config)
 
+    print('Data Augmentation eager')
     tf.enable_eager_execution()
 
     im = np.zeros((1, 224, 224, 3), np.float32)

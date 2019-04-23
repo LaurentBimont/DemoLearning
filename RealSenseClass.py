@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 
 class RealCamera:
     def __init__(self):
+        super(RealCamera, self).__init__()
+
         self.pipeline = rs.pipeline()
         self.frame = None
         self.pipelineStarted = False
@@ -67,6 +69,7 @@ class RealCamera:
 
     def store(self):
         pass
+
 
 if __name__=='__main__':
     Cam = RealCamera()
