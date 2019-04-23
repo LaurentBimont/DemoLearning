@@ -10,14 +10,13 @@ import scipy as sc
 import dataAugmentation as da
 from threading import Thread, Lock, Barrier
 
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+sess = tf.InteractiveSession(config=config)
+
 
 class Trainer(object):
     def __init__(self):
-        # config = tf.ConfigProto()
-        # config.gpu_options.per_process_gpu_memory_fraction = 0.9
-        # session = tf.Session(config=config)
-        # tf.enable_eager_execution()
-
         super(Trainer, self).__init__()
         self.myModel = mod.Reinforcement()
         self.optimizer = tf.train.MomentumOptimizer(learning_rate=5e-4, momentum=0.9)
@@ -44,12 +43,10 @@ class Trainer(object):
 
     def forward(self, input):
         self.image = input
-        self.log_img('input', input)
         # Increase the size of the image to have a relevant output map
         input = div.preprocess_img(input, target_height=self.scale_factor*224, target_width=self.scale_factor*224)
         # Pass input data through model
         self.output_prob = self.myModel(input)
-        self.log_img('output_prob', self.output_prob)
         # print(self.output_prob.numpy()[0, :, :, :].shape, type(self.output_prob.numpy()[0, :, :, :]))
         # plt.imshow(self.output_prob.numpy()[0, :, :, 0])
         # plt.show()
@@ -67,6 +64,7 @@ class Trainer(object):
         # A changer pour pouvoir un mode démonstration et un mode renforcement
         expected_reward, action_reward = self.action.compute_reward(self.action.grasp, self.future_reward)
         label224, label_weights224 = self.compute_labels(expected_reward, self.best_idx)
+
         label, label_weights = self.reduced_label(label224, label_weights224)
         self.output_prob = tf.reshape(self.output_prob, (self.width, self.height, 1))
         self.loss_value = self.loss(label, self.output_prob, label_weights)
@@ -80,7 +78,6 @@ class Trainer(object):
         label, label_weights = self.reduced_label(label, label_w)
         self.output_prob = tf.reshape(self.output_prob, (self.batch, self.width, self.height, 1))
         self.loss_value = self.loss(label, self.output_prob, label_weights)
-        self.log_scalar('loss value_dem', self.loss_value)
         return self.loss_value
 
     def max_primitive_pixel(self, prediction, viz=False):
@@ -91,7 +88,7 @@ class Trainer(object):
                  max_primitive_pixel_value : value of the highest Q-value
         '''
         # Transform the Q map tensor into a 2-size numpy array
-        numpy_predictions = prediction.numpy()[0, :, :, 0]
+        numpy_predictions = prediction.eval()[0, :, :, 0]
         if viz:
             result = tf.reshape(prediction, (prediction.shape[1], prediction.shape[2]))
             plt.subplot(1, 2, 1)
@@ -155,21 +152,25 @@ class Trainer(object):
         :return: label and label_weights in output format
         '''
 
-        # label, label_weights = label[:, :, 0], label_weights[:, :, 0]
         if viz:
             plt.subplot(1, 2, 1)
             plt.imshow(label[0, :, :, 0])
 
         label, label_weights = tf.convert_to_tensor(label, np.float32),\
                                tf.convert_to_tensor(label_weights, np.float32)
+        print('la taille des label ', label.shape)
+
         label, label_weights = tf.image.resize_images(label, (self.width, self.height)),\
                                tf.image.resize_images(label_weights, (self.width, self.height))
+        print('la taille des label ', label.shape)
+        print('la taille à forcer ', self.batch, self.width, self.height, 1)
         label, label_weights = tf.reshape(label[:, :, :, 0], (self.batch, self.width, self.height, 1)), \
                                tf.reshape(label_weights[:, :, :, 0], (self.batch, self.width, self.height, 1))
         if viz:
             plt.subplot(1, 2, 2)
-            plt.imshow(label.numpy()[0, :, :, 0])
+            plt.imshow(label.eval()[0, :, :, 0])
             plt.show()
+
         return label, label_weights
 
     def vizualisation(self, img, idx):
@@ -179,12 +180,13 @@ class Trainer(object):
 
     def main(self, input):
         self.future_reward = 1
-        with tf.GradientTape() as tape:
-            self.forward(input)
-            self.compute_loss()
-            grad = tape.gradient(self.loss_value, self.myModel.trainable_variables)
-            self.optimizer.apply_gradients(zip(grad, self.myModel.trainable_variables),
+        print(type(input))
+        self.forward(input)
+        self.compute_loss_dem()
+        grad = self.optimizer.compute_gradients(self.loss_value, self.myModel.trainable_variables)
+        self.optimizer.apply_gradients(zip(grad, self.myModel.trainable_variables),
                                            global_step=tf.train.get_or_create_global_step())
+
 
     def main_augmentation(self, dataset):
         ima, val, val_w = dataset['im'], dataset['label'], dataset['label_weights']
@@ -201,49 +203,18 @@ class Trainer(object):
 
     def main_batches(self, im, label, label_weights, viz=False):
         self.future_reward = 1
-        with tf.GradientTape() as tape:
-            self.forward(im)
-            if viz:
-                plt.imshow(label[0])
-                plt.show()
-            self.compute_loss_dem(label, label_weights, viz=False)
-            grad = tape.gradient(self.loss_value, self.myModel.trainable_variables)
-            self.optimizer.apply_gradients(zip(grad, self.myModel.trainable_variables),
-                                           global_step=tf.train.get_or_create_global_step())
-
-    def create_log(self):
-        self.logger = tf.contrib.summary.create_file_writer(logdir='logs')
-
-    def log_img(self, name, data):
-        with self.logger.as_default(), tf.contrib.summary.always_record_summaries():
-
-            if type(data).__module__ == np.__name__:
-                # If it is a numpy array
-                im2 = tf.convert_to_tensor(data.reshape((1, data.shape[1], data.shape[2], data.shape[3])))
-                print('taille des données pour le logger {} :'.format(name), im2.shape)
-            else:
-                # If it is an Eager Tensor
-                im2 = tf.reshape(data[0], (1, data.shape[1], data.shape[2], data.shape[3]))
-                print('Taille des données pour le logger {} :'.format(name), im2.shape)
-
-            tf.contrib.summary.image(name, im2)
-
-    def log_scalar(self, name, data):
-        with self.logger.as_default(), tf.contrib.summary.always_record_summaries():
-            tf.contrib.summary.scalar(name, data)
-
-    def log_generic(self, name, data):
-        with self.logger.as_default(), tf.contrib.summary.always_record_summaries():
-            tf.contrib.summary.generic(name, data)
+        print(im.shape)
+        self.forward(im)
+        if viz:
+            plt.imshow(label[0])
+            plt.show()
+        self.compute_loss_dem(label, label_weights, viz=False)
+        grad = self.optimizer.compute_gradients(self.loss_value, var_list=self.myModel.trainable_variable)
+        self.optimizer.apply_gradients(zip(grad, self.myModel.trainable_variables),
+                                       global_step=tf.train.get_or_create_global_step())
 
 
 if __name__ == '__main__':
-
-    config = tf.ConfigProto()
-    config.gpu_options.per_process_gpu_memory_fraction = 0.8
-    session = tf.Session(config=config)
-
-    tf.enable_eager_execution()
 
     Network = Trainer()
     im = np.zeros((1, 224, 224, 3), np.float32)
@@ -251,200 +222,28 @@ if __name__ == '__main__':
     im[:, 70:80, 80:125, :] = 1
     best_pix = [125, 103]
 
-#### Test Initial
-    test1 = False
-    if test1:
-        im = np.zeros((5, 224, 224, 3), np.float32)
-        im[:, 70:190, 100:105, :] = 1
-        im[:, 70:80, 80:125, :] = 1
-        result = Network.forward(im)
-        best_idx, best_value, image_idx, image_value = Network.get_best_predicted_primitive()
-        Network.vizualisation(im, image_idx)
-        result = tf.reshape(result, (result.shape[1], result.shape[2]))
+    Network.forward(im)
+    batch_size = 3
 
-#### Test avec une seule image
-    test2 = False
-    if test2:
-        im = np.zeros((10, 224, 224, 3), np.float32)
-        im[:, 70:190, 100:105, :] = 1
-        im[:, 70:80, 80:125, :] = 1
-        previous_qmap = Network.forward(im)
-        label, label_weights = Network.compute_labels(1.8, best_pix)
+    label, label_weights = Network.compute_labels(1.8, best_pix)
+    dataset = da.OnlineAugmentation().generate_batch(im, label, label_weights, augmentation_factor=2, viz=False)
+    im_o, label_o, label_wo = dataset['im'], dataset['label'], dataset['label_weights']
+    batch_tmp_im, batch_tmp_lab, batch_tmp_weights = [], [], []
 
-        print('Stacking in progress')
-        label, label_weights = tf.stack([label for i in range(10)]), tf.stack([label_weights for i in range(10)])
+    for i in range(batch_size):
+        ind_tmp = np.random.randint(len(dataset['im']))
+        batch_tmp_im.append(im_o[ind_tmp])
+        batch_tmp_lab.append(label_o[ind_tmp])
+        batch_tmp_weights.append(label_wo[ind_tmp])
 
-        N = 10
+    batch_im, batch_lab, batch_weights = tf.stack(batch_tmp_im), tf.stack(batch_tmp_lab), tf.stack(
+        batch_tmp_weights)
 
-        for i in range(N):
-            print('Iteration {}/{}'.format(i, N-1))
-            Network.main_batches(im, label, label_weights)
-        trained_qmap = Network.forward(im)
-
-        # Creation of a rotated view
-        im2 = sc.ndimage.rotate(im[0, :, :, :], 90)
-        im2.reshape(1, im2.shape[0], im2.shape[1], im2.shape[2])
-        im2 = np.array([im2])
-
-        # Resizes images
-        new_qmap = Network.forward(im2)
-        trained_qmap = tf.image.resize_images(trained_qmap[0], (14, 14))
-        previous_qmap = tf.image.resize_images(previous_qmap[0], (14, 14))
-        new_qmap = tf.image.resize_images(new_qmap[0], (14, 14))
-        print(new_qmap.shape)
-
-        # Plotting
-        plt.subplot(1, 3, 3)
-        plt.imshow(tf.reshape(new_qmap, (14, 14)))
-        plt.subplot(1, 3, 1)
-        plt.imshow(tf.reshape(previous_qmap, (14, 14)))
-        plt.subplot(1, 3, 2)
-        plt.imshow(tf.reshape(trained_qmap, (14, 14)))
-        plt.show()
-
-#### Test avec Data Augmentation
-    test3 = False
-    if test3:
-        previous_qmap = Network.forward(im)
-
-        label, label_weights = Network.compute_labels(1.8, best_pix)
-        dataset = da.OnlineAugmentation().generate_batch(im, label, label_weights, viz=True)
-        Network.main_augmentation(dataset)
-
-        trained_qmap = Network.forward(im)
-
-        # Creation of a rotated view
-        im2 = sc.ndimage.rotate(im[0, :, :, :], 90)
-        im2.reshape(1, im2.shape[0], im2.shape[1], im2.shape[2])
-        im2 = np.array([im2])
-
-        # Resizes images
-        new_qmap = Network.forward(im2)
-        trained_qmap = tf.image.resize_images(trained_qmap, (Network.width, Network.height))
-        previous_qmap = tf.image.resize_images(previous_qmap, (Network.width, Network.height))
-        new_qmap = tf.image.resize_images(new_qmap, (Network.width, Network.height))
-        print(new_qmap.shape)
-
-        # Plotting
-        plt.subplot(1, 3, 3)
-        plt.imshow(tf.reshape(new_qmap, (Network.width, Network.height)))
-        plt.subplot(1, 3, 1)
-        plt.imshow(tf.reshape(previous_qmap, (Network.width, Network.height)))
-        plt.subplot(1, 3, 2)
-        plt.imshow(tf.reshape(trained_qmap, (Network.width, Network.height)))
-        plt.show()
-
-#### Test avec Data Augmentation et Batch
-    test4 = False
-    if test4:
-        previous_qmap = Network.forward(im)
-        label, label_weights = Network.compute_labels(1.8, best_pix)
-
-        dataset = da.OnlineAugmentation().generate_batch(im, label, label_weights, viz=False)
-
-        im_o, label_o, label_wo = dataset['im'], dataset['label'], dataset['label_weights']
-
-        plt.subplot(1, 3, 1)
-        plt.imshow(im_o[0])
-        plt.subplot(1, 3, 2)
-        plt.imshow(label_o[0])
-        plt.subplot(1, 3, 3)
-        plt.imshow(label_wo[0])
-        plt.show()
-
-        epoch_size = 1
-        batch_size = 8
-        for epoch in range(epoch_size):
-
-            for batch in range(len(dataset['im'])//batch_size):
-
-                print('Epoch {}/{}, Batch {}/{}'.format(epoch+1, epoch_size, batch+1, len(dataset['im'])//batch_size))
-                batch_tmp_im, batch_tmp_lab, batch_tmp_weights = [], [], []
-                for i in range(10):
-                    ind_tmp = np.random.randint(len(dataset['im']))
-                    batch_tmp_im.append(im_o[ind_tmp])
-                    batch_tmp_lab.append(label_o[ind_tmp])
-                    batch_tmp_weights.append(label_wo[ind_tmp])
-
-                batch_im, batch_lab, batch_weights = tf.stack(batch_tmp_im), tf.stack(batch_tmp_lab), tf.stack(batch_tmp_weights)
-
-                Network.main_batches(batch_im, batch_lab, batch_weights)
-
-        trained_qmap = Network.forward(im)
-
-        # Creation of a rotated view
-        im2 = sc.ndimage.rotate(im[0, :, :, :], 90)
-        im2.reshape(1, im2.shape[0], im2.shape[1], im2.shape[2])
-        im2 = np.array([im2])
-
-        # Resizes images
-        new_qmap = Network.forward(im2)
-        trained_qmap = tf.image.resize_images(trained_qmap, (Network.width, Network.height))
-        previous_qmap = tf.image.resize_images(previous_qmap, (Network.width, Network.height))
-        new_qmap = tf.image.resize_images(new_qmap, (Network.width, Network.height))
-
-        # Plotting
-        plt.subplot(2, 3, 3)
-        # plt.imshow(tf.reshape(new_qmap, (Network.width, Network.height)))
-        new_qmap = tf.image.resize_images(new_qmap, (224, 224))
-        plt.imshow(tf.reshape(new_qmap, (224, 224)))
-
-        plt.subplot(2, 3, 1)
-        # plt.imshow(tf.reshape(previous_qmap, (Network.width, Network.height)))
-        previous_qmap = tf.image.resize_images(previous_qmap, (224, 224))
-        plt.imshow(tf.reshape(previous_qmap, (224, 224)))
-
-        plt.subplot(2, 3, 2)
-        # plt.imshow(tf.reshape(trained_qmap, (Network.width, Network.height)))
-        trained_qmap = tf.image.resize_images(trained_qmap, (224, 224))
-        plt.imshow(tf.reshape(trained_qmap, (224, 224)))
-
-        plt.subplot(2, 3, 5)
-        plt.imshow(im[0, :, :, :])
-
-        plt.subplot(2, 3, 6)
-        plt.imshow(im2[0, :, :, :])
-
-        plt.show()
-
-    test5 = False
-    if test5:
-        previous_qmap = Network.forward(im)
-        label, label_weights = Network.compute_labels(1.8, best_pix)
-
-        dataset = da.OnlineAugmentation().generate_batch(im, label, label_weights, viz=False)
-
-        im_o, label_o, label_wo = dataset['im'], dataset['label'], dataset['label_weights']
-        epoch_size = 1
-        batch_size = 8
-        for epoch in range(epoch_size):
-
-            for batch in range(len(dataset['im']) // batch_size):
-
-                print('Epoch {}/{}, Batch {}/{}'.format(epoch + 1, epoch_size, batch + 1,
-                                                        len(dataset['im']) // batch_size))
-                batch_tmp_im, batch_tmp_lab, batch_tmp_weights = [], [], []
-                for i in range(10):
-                    ind_tmp = np.random.randint(len(dataset['im']))
-                    batch_tmp_im.append(im_o[ind_tmp])
-                    batch_tmp_lab.append(label_o[ind_tmp])
-                    batch_tmp_weights.append(label_wo[ind_tmp])
-
-                batch_im, batch_lab, batch_weights = tf.stack(batch_tmp_im), tf.stack(batch_tmp_lab), tf.stack(
-                    batch_tmp_weights)
-
-                Network.main_batches(batch_im, batch_lab, batch_weights)
-
-        trained_qmap = Network.forward(im)
-
-        ntrained_qmap = trained_qmap.numpy()
-
-        print(np.argmax(ntrained_qmap), np.argmax(ntrained_qmap[0]))
+    Network.main_batches(batch_im, batch_lab, batch_weights)
 
     # Test de Tensorboard
-    test6 = True
+    test6 = False
     if test6:
-        Network.create_log()
         previous_qmap = Network.forward(im)
         label, label_weights = Network.compute_labels(1.8, best_pix)
         dataset = da.OnlineAugmentation().generate_batch(im, label, label_weights, viz=False)
@@ -469,7 +268,7 @@ if __name__ == '__main__':
 
         trained_qmap = Network.forward(im)
 
-        ntrained_qmap = trained_qmap.numpy()
+        ntrained_qmap = trained_qmap.eval()
 
         print(np.argmax(ntrained_qmap), np.argmax(ntrained_qmap[0]))
 
