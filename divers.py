@@ -2,13 +2,12 @@ import tensorflow as tf
 import numpy as np
 
 
-def rotate_image2( input_data, input_angles):
+def rotate_image2(input_data, input_angles):
     return tf.contrib.image.rotate(input_data, input_angles, interpolation="BILINEAR")
 
 
 def preprocess_img(img, target_height=224*5, target_width=224*5, rotate=False):
     # Apply 2x scale to input heightmaps
-    print(type(img))
     resized_img = tf.image.resize_images(img, (target_height, target_width))
 
     # Peut être rajouter un padding pour éviter les effets de bords

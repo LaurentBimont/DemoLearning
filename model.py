@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
 import tensorflow as tf
+config = tf.ConfigProto()
+config.gpu_options.per_process_gpu_memory_fraction = 0.8
+
+print('model eager')
+tf.enable_eager_execution(config)
+
 import numpy as np
 import matplotlib.pyplot as plt
 import divers as div
@@ -53,7 +59,7 @@ class GraspNet(BaseDeepModel):
         # We can use a higher learning rate and it acts like a regulizer
         # https://arxiv.org/abs/1502.03167
         self.bn0 = tf.keras.layers.BatchNormalization(name="grasp-b0")
-        self.conv0 = tf.keras.layers.Convolution2D(3, kernel_size=1, strides=1, activation=tf.nn.relu,
+        self.conv0 = tf.keras.layers.Convolution2D(62, kernel_size=1, strides=1, activation=tf.nn.relu,
                                             use_bias=False, padding='valid', name="grasp-conv0")
         self.bn1 = tf.keras.layers.BatchNormalization(name="grasp-b1")
         self.conv1 = tf.keras.layers.Convolution2D (3, kernel_size=1, strides=1,    activation=tf.nn.relu,
@@ -94,10 +100,9 @@ class Reinforcement(tf.keras.Model):
 if __name__ == "__main__":
     config = tf.ConfigProto()
     config.gpu_options.per_process_gpu_memory_fraction = 1
-    session = tf.Session(config=config)
 
     print('model eager')
-    tf.enable_eager_execution()
+    tf.enable_eager_execution(config)
 
     im = np.ndarray((3, 224, 224, 3), np.float32)
     Densenet = Reinforcement()
