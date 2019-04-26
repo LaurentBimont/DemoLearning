@@ -10,6 +10,7 @@ import divers as div
 import cv2
 import scipy as sc
 import dataAugmentation as da
+import tfmpl
 
 config = tf.ConfigProto()
 config.gpu_options.per_process_gpu_memory_fraction = 1
@@ -24,36 +25,36 @@ class Trainer(object):
         self.action = RM.RewardManager()
         self.width, self.height = 0, 0
         self.best_idx, self.future_reward = [0, 0], 0
-        self.scale_factor = 1
+        self.scale_factor = 2
         self.output_prob = 0
         self.loss_value = 0
         self.iteration = 0
+        self.num = 0
+        self.classifier_boolean = True
+        # self.create_log()
 
         ###### A changer par une fonction adaptée au demonstration learning ######
-        self.loss = func.partial(tf.losses.huber_loss)  # Huber loss
+        self.loss = func.partial(tf.losses.huber_loss)                  # Huber loss
+        self.loss = func.partial(tf.losses.sigmoid_cross_entropy)
+        self.loss = func.partial(tf.losses.mean_pairwise_squared_error)
         ######                     Demonstration                            ######
         self.best_idx = [125, 103]
 
     def custom_loss(self):
         '''
-        As presented in 'Deep Q-learning from Demonstrations, the loss value is highly impacted by the
+        As presented in 'Deep Q-learning from Demonstrations', the loss value is highly impacted by the
         :return: Loss Value
         '''
         lossL2 = tf.add_n([tf.nn.l2_loss(v) for v in vars
                            if 'bias' not in v.name]) * 0.001
 
-    def forward(self, input):
+    def forward(self, input, viz=False):
         self.image = input
-        self.log_img('input', input)
         # Increase the size of the image to have a relevant output map
         input = div.preprocess_img(input, target_height=self.scale_factor*224, target_width=self.scale_factor*224)
         # Pass input data through model
         self.output_prob = self.myModel(input)
-        tensorboard_output_prob = self.output_viz(self.output_prob[0])
-        self.log_img('output_prob', tensorboard_output_prob)
-        # print(self.output_prob.numpy()[0, :, :, :].shape, type(self.output_prob.numpy()[0, :, :, :]))
-        # plt.imshow(self.output_prob.numpy()[0, :, :, 0])
-        # plt.show()
+
         # Useless for the moment
         self.batch, self.width, self.height = self.output_prob.shape[0], self.output_prob.shape[1], self.output_prob.shape[2]
         # Return Q-map
@@ -62,7 +63,7 @@ class Trainer(object):
     def backpropagation(self, gradient):
         self.optimizer.apply_gradients(zip(gradient, self.myModel.trainable_variables),
                                        global_step=tf.train.get_or_create_global_step())
-        #self.iteration = tf.train.get_global_step()
+        self.iteration = tf.train.get_global_step()
 
     def compute_loss(self):
         # A changer pour pouvoir un mode démonstration et un mode renforcement
@@ -78,10 +79,29 @@ class Trainer(object):
         if viz:
             plt.imshow(label[0, :, :, :])
             plt.show()
+
         label, label_weights = self.reduced_label(label, label_w)
-        self.output_prob = tf.reshape(self.output_prob, (self.batch, self.width, self.height, 1))
-        self.loss_value = self.loss(label, self.output_prob, label_weights)
-        self.log_scalar('loss value_dem', self.loss_value)
+        #self.output_prob = tf.reshape(self.output_prob, (self.batch, self.width, self.height, 1))
+
+        self.loss_value = self.loss(label, self.output_prob)
+        # Tensorboard ouputs
+        if (tf.train.get_global_step() is not None) and (tf.train.get_global_step().numpy()%3 == 0):
+            self.log_img('input', self.image)
+            tensorboard_output_prob = self.output_viz(self.output_prob)
+            self.log_img('output_prob', tensorboard_output_prob)
+
+            self.log_scalar('loss value_dem', self.loss_value)
+            self.log_img('label', label)
+            self.log_img('label_weight', label_weights)
+
+            self.log_img('output_prob', tensorboard_output_prob)
+            output_prob_plt = self.draw_scatter(self.output_prob[0])
+            self.log_fig('output_prob_plt', output_prob_plt)
+
+            # np.save('label{}'.format(self.num), label.numpy())
+            # np.save('output_prob{}'.format(self.num), self.output_prob.numpy())
+            # np.save('computed_loss{}'.format(self.num), np.array([self.loss_value]))
+            self.num += 1
         return self.loss_value
 
     def max_primitive_pixel(self, prediction, viz=False):
@@ -135,7 +155,8 @@ class Trainer(object):
         '''
         # Compute labels
         label = np.zeros((224, 224, 3), dtype=np.float32)
-        area = 7
+        area = 224//(self.width*2)
+        print('L\'aire est la suivante :', area)
         label[best_pix_ind[0]-area:best_pix_ind[0]+area, best_pix_ind[1]-area:best_pix_ind[1]+area, :] = label_value
         label_weights = np.zeros(label.shape, dtype=np.float32)
         label_weights[best_pix_ind[0]-area:best_pix_ind[0]+area, best_pix_ind[1]-area:best_pix_ind[1]+area, :] = 1
@@ -167,21 +188,30 @@ class Trainer(object):
                                tf.image.resize_images(label_weights, (self.width, self.height))
         label, label_weights = tf.reshape(label[:, :, :, 0], (self.batch, self.width, self.height, 1)), \
                                tf.reshape(label_weights[:, :, :, 0], (self.batch, self.width, self.height, 1))
+
+        if self.classifier_boolean:
+            label = label.numpy()
+            label[label > 0.] = 1
+            label = tf.convert_to_tensor(label, np.float32)
         if viz:
             plt.subplot(1, 2, 2)
             plt.imshow(label.numpy()[0, :, :, 0])
             plt.show()
         return label, label_weights
 
+
     def output_viz(self, output_prob):
         output_viz = np.clip(output_prob, 0, 1)
         output_viz = cv2.applyColorMap((output_viz*255).astype(np.uint8), cv2.COLORMAP_JET)
+        output_viz = cv2.cvtColor(output_viz, cv2.COLOR_BGR2RGB)
         return(np.array([output_viz]))
+
 
     def vizualisation(self, img, idx):
         prediction = cv2.circle(img[0], (int(idx[1]), int(idx[0])), 7, (255, 255, 255), 2)
         plt.imshow(prediction)
         plt.show()
+
 
     def main(self, input):
         self.future_reward = 1
@@ -191,6 +221,7 @@ class Trainer(object):
             grad = tape.gradient(self.loss_value, self.myModel.trainable_variables)
             self.optimizer.apply_gradients(zip(grad, self.myModel.trainable_variables),
                                            global_step=tf.train.get_or_create_global_step())
+
 
     def main_augmentation(self, dataset):
         ima, val, val_w = dataset['im'], dataset['label'], dataset['label_weights']
@@ -205,6 +236,7 @@ class Trainer(object):
                 self.optimizer.apply_gradients(zip(grad, self.myModel.trainable_variables),
                                                global_step=tf.train.get_or_create_global_step())
 
+
     def main_batches(self, im, label, label_weights, viz=False):
         self.future_reward = 1
         with tf.GradientTape() as tape:
@@ -216,9 +248,28 @@ class Trainer(object):
             grad = tape.gradient(self.loss_value, self.myModel.trainable_variables)
             self.optimizer.apply_gradients(zip(grad, self.myModel.trainable_variables),
                                            global_step=tf.train.get_or_create_global_step())
+            self.iteration = tf.train.get_global_step()
+
 
     def create_log(self):
         self.logger = tf.contrib.summary.create_file_writer(logdir='logs')
+
+
+    @tfmpl.figure_tensor
+    def draw_scatter(self, data):
+        '''Draw scatter plots. One for each color.'''
+        fig = tfmpl.create_figure()
+        # plt.imshow(data[:, :, 0])
+        # plt.show()
+
+        ax = fig.add_subplot(111)
+        ax.imshow(data[:, :, 0])
+        fig.tight_layout()
+        return fig
+
+    def log_fig(self, name, data):
+        with self.logger.as_default(), tf.contrib.summary.always_record_summaries():
+            tf.contrib.summary.image(name, data)
 
     def log_img(self, name, data):
         with self.logger.as_default(), tf.contrib.summary.always_record_summaries():
@@ -445,10 +496,10 @@ if __name__=='__main__':
         Network.create_log()
         previous_qmap = Network.forward(im)
         label, label_weights = Network.compute_labels(1.8, best_pix)
-        dataset = da.OnlineAugmentation().generate_batch(im, label, label_weights, viz=False, augmentation_factor=2)
+        dataset = da.OnlineAugmentation().generate_batch(im, label, label_weights, viz=False, augmentation_factor=6)
         im_o, label_o, label_wo = dataset['im'], dataset['label'], dataset['label_weights']
-        epoch_size = 1
-        batch_size = 2
+        epoch_size = 4
+        batch_size = 10
         for epoch in range(epoch_size):
             for batch in range(len(dataset['im']) // batch_size):
                 print('Epoch {}/{}, Batch {}/{}'.format(epoch + 1, epoch_size, batch + 1,

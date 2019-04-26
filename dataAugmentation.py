@@ -48,13 +48,15 @@ class OnlineAugmentation(object):
         '''
         self.create_batch(im, label, label_weights)
         flip = tf.image.flip_up_down(self.batch)
+
         self.add_im(flip)
         flip = tf.image.flip_left_right(flip)
+
         self.add_im(flip)
         flip = tf.image.flip_left_right(self.batch)
+
         self.add_im(flip)
 
-        # To be deleted
         return flip[0], flip[1], flip[2]
 
     def rotate(self, im, label, label_weights, angle=0):
@@ -71,7 +73,6 @@ class OnlineAugmentation(object):
         if self.assert_label(rotation[1]):
             self.add_im(rotation)
 
-        # To be deleted
         return rotation[0], rotation[1], rotation[2]
 
     def crop(self, im, label, label_weights, zooming=224):
@@ -79,7 +80,6 @@ class OnlineAugmentation(object):
         :param im: input image (numpy (224x224x3))
         :param label: label (numpy (224x224x3))
         :param label_weights: label weights (numpy (224x224x3))
-
         :return: Cropping inputs in Tensor Format (rq : crop[1] and crop[2] have to be resized to the output format
                  of the Network
         '''
@@ -87,9 +87,9 @@ class OnlineAugmentation(object):
         x = tf.random_crop(self.batch, size=[3, zooming, zooming, 3], seed=self.seed)
         crop = tf.image.resize_images(x, size=self.original_size)
         if self.assert_label(crop[1]):
+
             self.add_im(crop)
 
-        # To be deleted
         return crop[0], crop[1], crop[2]
 
     def translate(self, im, label, label_weights, pad_top=0, pad_left=0, pad_bottom=0, pad_right=0):
@@ -100,7 +100,6 @@ class OnlineAugmentation(object):
         :param pad_top: translation to the bottom (pixels)
         :param pad_left: translation to the right (pixels)
         :param pad_bottom: translation to the bottom (pixels)
-        :param
 
         :return: Translated inputs in Tensor Format (rq : translate[1] and translate[2] have to be resized to the output format
                  of the Network
@@ -111,10 +110,10 @@ class OnlineAugmentation(object):
                                          width + pad_right + pad_left)
         # pad_to_bounding_box(image, offset_height, offset_width, target_height, target_width
         translate = tf.image.crop_to_bounding_box(x, pad_bottom, pad_right, height, width)
+
         if self.assert_label(translate[1]):
             self.add_im(translate)
 
-        # To be deleted
         return translate[0], translate[1], translate[2]
 
     def assert_label(self, label):
@@ -152,7 +151,6 @@ class OnlineAugmentation(object):
                             ima, lab, lab_w = self.rotate(ima, lab, lab_w, angle=np.random.rand()*0.785)
                             if viz:
                                 if self.assert_label(lab):
-
                                     if h < 10 and k == 2:
                                         plt.figure(1)
                                         plt.subplot(3, 3, h)

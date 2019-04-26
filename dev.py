@@ -1,38 +1,29 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
-
-# TensorFlow and tf.keras
-import tensorflow as tf
-from tensorflow import keras
-
-# Helper libraries
 import numpy as np
+import tensorflow as tf
 import matplotlib.pyplot as plt
 
-print(tf.__version__)
+print(int(5)&1)
 
-fashion_mnist = keras.datasets.fashion_mnist
+tf.enable_eager_execution()
 
-(train_images, train_labels), (test_images, test_labels) = fashion_mnist.load_data()
+print(tf.losses.sigmoid_cross_entropy(np.array([1., 1., 1.]), np.array([0., 1., 1.])))
+print(tf.losses.mean_pairwise_squared_error(np.array([1., 1., 1.]), np.array([1., 1., 1.])))
+#
+num = 26
+for i in range(num):
+    label = np.load('label{}.npy'.format(i))
+    output = np.load('output_prob{}.npy'.format(i))
+    computed_loss = np.load('computed_loss{}.npy'.format(i))
+    print(label[0, :, :, 0].shape)
+    plt.subplot(1, 2, 1)
+    plt.imshow(output[0, :, :, 0])
+    plt.subplot(1, 2, 2)
+    plt.imshow(label[0, :, :, 0])
 
-class_names = ['T-shirt/top', 'Trouser', 'Pullover', 'Dress', 'Coat',
-               'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot']
+    print('###################')
+    print(tf.losses.mean_pairwise_squared_error(np.array([1., 1., 1.]), np.array([1., 1., 1.])))
+    print(tf.losses.mean_pairwise_squared_error(label, label))
+    print(tf.losses.mean_pairwise_squared_error(label, output))
 
-train_images = train_images / 255.0
-
-test_images = test_images / 255.0
-
-model = keras.Sequential([
-    keras.layers.Flatten(input_shape=(28, 28)),
-    keras.layers.Dense(128, activation=tf.nn.relu),
-    keras.layers.Dense(10, activation=tf.nn.softmax)
-])
-
-model.compile(optimizer='adam',
-              loss='sparse_categorical_crossentropy',
-              metrics=['accuracy'])
-model.fit(train_images, train_labels, epochs=5)
-
-test_loss, test_acc = model.evaluate(test_images, test_labels)
-
-print('Test accuracy:', test_acc)
+    plt.show()
 

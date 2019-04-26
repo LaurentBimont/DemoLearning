@@ -1,11 +1,5 @@
 # -*- coding: utf-8 -*-
 import tensorflow as tf
-config = tf.ConfigProto()
-config.gpu_options.per_process_gpu_memory_fraction = 0.8
-
-print('model eager')
-tf.enable_eager_execution(config)
-
 import numpy as np
 import matplotlib.pyplot as plt
 import divers as div
