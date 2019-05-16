@@ -1,8 +1,12 @@
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
+
+tf.enable_eager_execution()
+
+
 #Test
-# from trainer import Trainer
+from trainer import Trainer
 
 
 class OnlineAugmentation(object):
@@ -123,7 +127,7 @@ class OnlineAugmentation(object):
         :return: True if a valid grasping point is still in the image
                  False otherwise
         '''
-        if np.sum(label.eval()) > 5:
+        if np.sum(label.numpy()) > 5:
             return True
         return False
 
@@ -170,9 +174,6 @@ class OnlineAugmentation(object):
 
 if __name__=="__main__":
 
-    config = tf.ConfigProto()
-    config.gpu_options.per_process_gpu_memory_fraction = 0.9
-    session = tf.Session(config=config)
 
     tf.enable_eager_execution()
 
@@ -198,10 +199,8 @@ if __name__=="__main__":
     # Visualisation
     viz = True
     if viz:
-        plt.subplot(1, 3, 1)
-        plt.imshow(flip.eval())
-        plt.subplot(1, 3, 2)
-        plt.imshow(label_flip.eval())
-        plt.subplot(1, 3, 3)
-        plt.imshow(label_weights_flip.eval())
+        plt.subplot(1, 2, 1)
+        plt.imshow(flip.numpy())
+        plt.subplot(1, 2, 2)
+        plt.imshow(label_flip.numpy())
         plt.show()

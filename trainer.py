@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import divers as div
 #import cv2
 import scipy as sc
-import dataAugmentation as da
+# import dataAugmentation as da
 from threading import Thread, Lock, Barrier
 
 config = tf.ConfigProto()
@@ -221,6 +221,8 @@ if __name__ == '__main__':
     im[:, 70:80, 80:125, :] = 1
     best_pix = [125, 103]
 
+    plt.imshow
+
     Network.forward(im)
     batch_size = 3
 
@@ -270,4 +272,3 @@ if __name__ == '__main__':
         ntrained_qmap = trained_qmap.eval()
 
         print(np.argmax(ntrained_qmap), np.argmax(ntrained_qmap[0]))
-

@@ -17,24 +17,36 @@ class RealCamera:
         self.color_image = None
         self.depth_image = None
 
-    def start_pipe(self, align=True):
+
+    def start_pipe(self, align=True, usb3=True):
         if not self.pipelineStarted:
+
             if align:
                 # Create a config and configure the pipeline to stream
                 #  different resolutions of color and depth streams
                 config = rs.config()
-                config.enable_stream(rs.stream.depth, 640, 360, rs.format.z16, 30)
-                config.enable_stream(rs.stream.color, 640, 480, rs.format.rgb8, 30)
+                if usb3:
+                    print(2)
+                    config.enable_stream(rs.stream.depth, 640, 360, rs.format.z16, 30)
+                    config.enable_stream(rs.stream.color, 640, 480, rs.format.rgb8, 30)
+
+                self.pipeline = rs.pipeline()
+                self.config = rs.config()
+                self.profile = config.resolve(self.pipeline)  # does not start streaming
+
                 self.profile = self.pipeline.start(config)
                 self.pipelineStarted = True
 
-                #align the two streams
+                # Align the two streams
                 align_to = rs.stream.color
                 self.align = rs.align(align_to)
 
                 # Get depth scale
                 depth_sensor = self.profile.get_device().first_depth_sensor()
                 self.depth_scale = depth_sensor.get_depth_scale()
+
+                # Get Intrinsic parameters
+                self.get_intrinsic()
 
     def stop_pipe(self):
         if self.pipelineStarted:
@@ -63,7 +75,7 @@ class RealCamera:
         self.depth_image = np.asanyarray(aligned_depth_frame.get_data())*self.depth_scale
         self.color_image = np.asanyarray(color_frame.get_data())
 
-        return(self.depth_image, self.color_image)
+        return self.depth_image, self.color_image
 
     def transform_robot(self):
         pass
@@ -74,10 +86,18 @@ class RealCamera:
     def store(self):
         pass
 
+    def get_intrinsic(self):
+        # pipeline = rs.pipeline()
+        # cfg = pipeline.start()  # Start pipeline and get the configuration it found
+        # profile = cfg.get_stream(rs.stream.depth)  # Fetch stream profile for depth stream
+        # intr = profile.as_video_stream_profile().get_intrinsics()  # Downcast to video_stream_profile and fetch intrinsics
+        profile = self.profile.get_stream(rs.stream.depth)  # Fetch stream profile for depth stream
+        self.intr = profile.as_video_stream_profile().get_intrinsics()  # Downcast to video_stream_profile and fetch intrinsics
 
 if __name__=='__main__':
     Cam = RealCamera()
-    Cam.start_pipe()
+    Cam.start_pipe(usb3=False)
+    Cam.get_intrinsic()
     Cam.get_frame()
     Cam.stop_pipe()
     Cam.show()

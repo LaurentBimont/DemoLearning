@@ -74,7 +74,7 @@ class Reinforcement(tf.keras.Model):
     def __init__(self):
         super(Reinforcement, self).__init__()
         self.Dense = DensenetFeatModel()
-        self.VGG = VGGFeatModel()
+        #self.VGG = VGGFeatModel()
         self.QGrasp = GraspNet()
         self.my_trainable_variables = self.QGrasp.trainable_variables
         print(self.QGrasp.trainable_variables)
