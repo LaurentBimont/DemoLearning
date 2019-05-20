@@ -596,7 +596,6 @@ if __name__=='__main__':
         previous_qmap = tf.image.resize_images(previous_qmap, (224, 224))
         plt.imshow(tf.reshape(previous_qmap, (224, 224)))
 
-
         plt.subplot(3, 3, 2)
         trained_qmap = tf.image.resize_images(trained_qmap, (224, 224))
         plt.imshow(tf.reshape(trained_qmap, (224, 224)))
