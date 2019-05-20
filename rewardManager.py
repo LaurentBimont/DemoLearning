@@ -1,8 +1,3 @@
-# -*- coding: utf-8 -*-
-import numpy as np
-import tensorflow as tf
-
-
 class Grasp(object):
     def __init__(self):
         super(Grasp, self).__init__()

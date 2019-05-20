@@ -3,6 +3,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import divers as div
 
+if __name__=="__main__":
+    config = tf.ConfigProto()
+    config.gpu_options.per_process_gpu_memory_fraction = 0.8
+    tf.enable_eager_execution(config)
+
 
 class DensenetFeatModel(tf.keras.Model):
     def __init__(self):
@@ -74,10 +79,10 @@ class Reinforcement(tf.keras.Model):
     def __init__(self):
         super(Reinforcement, self).__init__()
         self.Dense = DensenetFeatModel()
-        #self.VGG = VGGFeatModel()
+        # self.VGG = VGGFeatModel()
         self.QGrasp = GraspNet()
         self.my_trainable_variables = self.QGrasp.trainable_variables
-        print(self.QGrasp.trainable_variables)
+        print("Number of Trainable Variables", self.QGrasp.trainable_variables)
 
         # Initialize variables
         self.in_height, self.in_width = 0, 0
@@ -87,17 +92,14 @@ class Reinforcement(tf.keras.Model):
         self.target_width = 0
 
     def call(self, input):
+        # x = self.QGrasp(self.VGG(input))
+        # x = self.QGrasp(input)
         x = self.QGrasp(self.Dense(input))
         return x
 
 
 if __name__ == "__main__":
-    config = tf.ConfigProto()
-    config.gpu_options.per_process_gpu_memory_fraction = 1
-    session = tf.Session(config=config)
-
-    tf.enable_eager_execution()
-
+    
     im = np.ndarray((3, 224, 224, 3), np.float32)
     Densenet = Reinforcement()
-    Densenet(im)
+    print(Densenet(im))

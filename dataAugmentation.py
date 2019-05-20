@@ -2,8 +2,11 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 
-tf.enable_eager_execution()
 
+if __name__=="__main__":
+    config = tf.ConfigProto()
+    config.gpu_options.per_process_gpu_memory_fraction = 0.8
+    tf.enable_eager_execution(config)
 
 #Test
 from trainer import Trainer
@@ -140,8 +143,10 @@ class OnlineAugmentation(object):
         :return: Batch of the augmented DataSet
         '''
         h = 1
-        print(im.dtype, label.dtype, label_weights.dtype) # = tf.float32, tf.float32, tf.float32
+        print('taille image diametre ', im.shape)
+        print('Facteur da ', augmentation_factor)
         for i in range(augmentation_factor):
+            print(1)
             ima, lab, lab_w = self.crop(im, label, label_weights, zooming=np.random.randint(100, 200))
 
             if self.assert_label(lab):
@@ -160,15 +165,17 @@ class OnlineAugmentation(object):
                                     if h < 10 and k == 2:
                                         plt.figure(1)
                                         plt.subplot(3, 3, h)
-                                        plt.imshow(ima.eval())
+                                        plt.imshow(ima.numpy())
                                         plt.figure(2)
                                         plt.subplot(3, 3, h)
-                                        plt.imshow(lab.eval())
+                                        plt.imshow(lab.numpy())
                                         h += 1
                             if self.assert_label(lab):
                                 self.flip(ima, lab, lab_w)
         if viz:
             plt.show()
+
+
         return self.general_batch
 
 
